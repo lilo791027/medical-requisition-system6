@@ -3444,21 +3444,444 @@
             showNotification(`刪除簽核設定功能展示中：${id}`, 'success');
         }
 
-        // 其他必要的功能函數
+        // 採購單管理功能
         function addPurchaseItem() {
-            showNotification('採購單功能完整實現中...', 'success');
+            purchaseItemCounter++;
+            const tableBody = document.getElementById('purchaseItemsTableBody');
+            if (!tableBody) return;
+            
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><input type="text" name="itemCode_${purchaseItemCounter}" placeholder="品項編號" required></td>
+                <td><input type="text" name="purchaseItemName_${purchaseItemCounter}" placeholder="品項名稱" required></td>
+                <td><input type="text" name="purchaseSpec_${purchaseItemCounter}" placeholder="規格"></td>
+                <td><input type="number" name="purchaseQuantity_${purchaseItemCounter}" placeholder="數量" min="1" onchange="updatePurchaseTotal()" required></td>
+                <td>
+                    <select name="purchaseUnit_${purchaseItemCounter}" required>
+                        <option value="">請選擇</option>
+                        <option value="盒">盒</option>
+                        <option value="瓶">瓶</option>
+                        <option value="支">支</option>
+                        <option value="個">個</option>
+                        <option value="包">包</option>
+                        <option value="台">台</option>
+                    </select>
+                </td>
+                <td><input type="number" name="purchaseUnitPrice_${purchaseItemCounter}" placeholder="單價" min="0" step="0.01" onchange="updatePurchaseTotal()"></td>
+                <td class="purchase-subtotal">0</td>
+                <td><button type="button" class="btn btn-danger" onclick="removePurchaseItem(this)">🗑️</button></td>
+            `;
+            tableBody.appendChild(row);
         }
 
+        // 移除採購品項
+        function removePurchaseItem(button) {
+            if (confirm('確定要移除此品項嗎？')) {
+                button.closest('tr').remove();
+                updatePurchaseTotal();
+            }
+        }
+
+        // 更新採購總金額
+        function updatePurchaseTotal() {
+            let total = 0;
+            const tableBody = document.getElementById('purchaseItemsTableBody');
+            if (!tableBody) return;
+            
+            const rows = tableBody.querySelectorAll('tr');
+            
+            rows.forEach(row => {
+                const quantityInput = row.querySelector('input[name^="purchaseQuantity"]');
+                const unitPriceInput = row.querySelector('input[name^="purchaseUnitPrice"]');
+                const subtotalCell = row.querySelector('.purchase-subtotal');
+                
+                if (quantityInput && unitPriceInput && subtotalCell) {
+                    const quantity = parseFloat(quantityInput.value) || 0;
+                    const unitPrice = parseFloat(unitPriceInput.value) || 0;
+                    const subtotal = quantity * unitPrice;
+                    
+                    subtotalCell.textContent = subtotal.toLocaleString();
+                    total += subtotal;
+                }
+            });
+            
+            const totalAmountSpan = document.getElementById('purchaseTotalAmount');
+            if (totalAmountSpan) {
+                totalAmountSpan.textContent = total.toLocaleString();
+            }
+        }
+
+        // 提交採購單
         function submitPurchase() {
-            showNotification('採購單提交功能完整實現中...', 'success');
+            console.log('提交採購單...');
+            
+            // 基本資料驗證
+            const purchaseNo = document.getElementById('purchaseNo')?.value;
+            const purchaseDate = document.getElementById('purchaseDate')?.value;
+            const supplier = document.getElementById('supplier')?.value;
+            const contactPerson = document.getElementById('contactPerson')?.value;
+            const purchaseNote = document.getElementById('purchaseNote')?.value;
+            
+            if (!supplier) {
+                showNotification('請選擇供應商', 'error');
+                return;
+            }
+            
+            if (!contactPerson) {
+                showNotification('請填寫聯絡人', 'error');
+                return;
+            }
+            
+            // 檢查是否有品項
+            const tableBody = document.getElementById('purchaseItemsTableBody');
+            if (!tableBody || tableBody.children.length === 0) {
+                showNotification('請至少新增一個品項', 'error');
+                return;
+            }
+            
+            // 驗證品項資料並收集品項資訊
+            let isValid = true;
+            let items = [];
+            const rows = tableBody.querySelectorAll('tr');
+            
+            rows.forEach((row, index) => {
+                const itemCode = row.querySelector('input[name^="itemCode"]')?.value;
+                const itemName = row.querySelector('input[name^="purchaseItemName"]')?.value;
+                const specification = row.querySelector('input[name^="purchaseSpec"]')?.value;
+                const quantity = row.querySelector('input[name^="purchaseQuantity"]')?.value;
+                const unit = row.querySelector('select[name^="purchaseUnit"]')?.value;
+                const unitPrice = row.querySelector('input[name^="purchaseUnitPrice"]')?.value;
+                
+                if (!itemCode || !itemName || !quantity || !unit) {
+                    showNotification(`第 ${index + 1} 個品項資料不完整`, 'error');
+                    isValid = false;
+                    return;
+                }
+                
+                items.push({
+                    itemCode,
+                    itemName,
+                    specification: specification || '',
+                    quantity: parseInt(quantity),
+                    unit,
+                    unitPrice: parseFloat(unitPrice) || 0,
+                    subtotal: (parseInt(quantity) * (parseFloat(unitPrice) || 0))
+                });
+            });
+            
+            if (!isValid) return;
+            
+            // 計算總金額
+            const totalAmount = items.reduce((sum, item) => sum + item.subtotal, 0);
+            
+            // 創建新的採購單物件
+            const newPurchase = {
+                purchaseNo,
+                purchaseDate,
+                supplier,
+                contactPerson,
+                purchaseNote: purchaseNote || '',
+                items,
+                totalAmount,
+                status: '待審核',
+                submitTime: new Date().toLocaleString('zh-TW')
+            };
+            
+            // 加入到待審核列表
+            pendingPurchases.push(newPurchase);
+            
+            // 更新簽核管理頁面的表格
+            updatePendingPurchaseTable();
+            
+            // 提交成功
+            showNotification('採購單提交成功！', 'success');
+            resetPurchaseForm();
+            
+            // 更新待審核數量
+            updatePendingCount();
+            
+            console.log('新採購單已加入:', newPurchase);
         }
 
+        // 重設採購表單
         function resetPurchaseForm() {
-            showNotification('採購單重設功能完整實現中...', 'success');
+            const form = document.getElementById('purchaseForm');
+            if (form) {
+                form.reset();
+            }
+            
+            const tableBody = document.getElementById('purchaseItemsTableBody');
+            if (tableBody) {
+                tableBody.innerHTML = '';
+            }
+            
+            const totalAmount = document.getElementById('purchaseTotalAmount');
+            if (totalAmount) {
+                totalAmount.textContent = '0';
+            }
+            
+            generatePurchaseNo();
+            const today = new Date().toISOString().split('T')[0];
+            const purchaseDate = document.getElementById('purchaseDate');
+            if (purchaseDate) {
+                purchaseDate.value = today;
+            }
+            
+            purchaseItemCounter = 0;
         }
 
+        // 更新待審核採購單表格
+        function updatePendingPurchaseTable() {
+            const tableBody = document.getElementById('pendingPurchaseTable');
+            if (!tableBody) return;
+            
+            // 清空現有內容
+            tableBody.innerHTML = '';
+            
+            // 重新添加待審核的採購單
+            pendingPurchases.forEach(purchase => {
+                const row = document.createElement('tr');
+                row.setAttribute('data-dynamic', 'true');
+                row.innerHTML = `
+                    <td>${purchase.purchaseNo}</td>
+                    <td>${purchase.purchaseDate}</td>
+                    <td>${purchase.supplier}</td>
+                    <td style="text-align: right; font-weight: bold; color: #667eea;">NT$ ${purchase.totalAmount.toLocaleString()}</td>
+                    <td><span class="status-badge status-pending">待審核</span></td>
+                    <td>
+                        <button class="btn btn-success" onclick="approveDocument('${purchase.purchaseNo}', 'purchase')">✅ 核准</button>
+                        <button class="btn btn-danger" onclick="rejectDocument('${purchase.purchaseNo}', 'purchase')">🚫 駁回</button>
+                        <button class="btn btn-primary" onclick="viewPurchaseDocument('${purchase.purchaseNo}')">👁️ 查看</button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // 從請購單新增採購品項
+        function addPurchaseItemFromProcurement(procurementItem) {
+            purchaseItemCounter++;
+            const tableBody = document.getElementById('purchaseItemsTableBody');
+            if (!tableBody) return;
+            
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><input type="text" name="itemCode_${purchaseItemCounter}" value="${procurementItem.category}_${purchaseItemCounter.toString().padStart(3, '0')}" placeholder="品項編號"></td>
+                <td><input type="text" name="purchaseItemName_${purchaseItemCounter}" value="${procurementItem.itemName}" placeholder="品項名稱"></td>
+                <td><input type="text" name="purchaseSpec_${purchaseItemCounter}" value="${procurementItem.specification || ''}" placeholder="規格"></td>
+                <td><input type="number" name="purchaseQuantity_${purchaseItemCounter}" value="${procurementItem.quantity}" placeholder="數量" onchange="updatePurchaseTotal()"></td>
+                <td>
+                    <select name="purchaseUnit_${purchaseItemCounter}">
+                        <option value="">請選擇</option>
+                        <option value="盒" ${procurementItem.unit === '盒' ? 'selected' : ''}>盒</option>
+                        <option value="瓶" ${procurementItem.unit === '瓶' ? 'selected' : ''}>瓶</option>
+                        <option value="支" ${procurementItem.unit === '支' ? 'selected' : ''}>支</option>
+                        <option value="個" ${procurementItem.unit === '個' ? 'selected' : ''}>個</option>
+                        <option value="包" ${procurementItem.unit === '包' ? 'selected' : ''}>包</option>
+                        <option value="台" ${procurementItem.unit === '台' ? 'selected' : ''}>台</option>
+                    </select>
+                </td>
+                <td><input type="number" name="purchaseUnitPrice_${purchaseItemCounter}" value="${procurementItem.unitPrice}" placeholder="單價" onchange="updatePurchaseTotal()"></td>
+                <td class="purchase-subtotal">${(procurementItem.quantity * procurementItem.unitPrice).toLocaleString()}</td>
+                <td><button type="button" class="btn btn-danger" onclick="removePurchaseItem(this)">🗑️</button></td>
+            `;
+            tableBody.appendChild(row);
+        }
+
+        // 從勾選項目建立採購單
         function createPurchaseFromSelected() {
-            showNotification('批量建立採購單功能完整實現中...', 'success');
+            console.log('建立採購單從選擇項目...');
+            
+            const selectedCheckboxes = document.querySelectorAll('.approved-checkbox:checked');
+            
+            if (selectedCheckboxes.length === 0) {
+                showNotification('請至少選擇一個已核准的請購單', 'error');
+                return;
+            }
+            
+            const selectedProcurements = [];
+            selectedCheckboxes.forEach(checkbox => {
+                const procurementId = checkbox.getAttribute('data-procurement-id');
+                const procurement = approvedProcurements.find(p => p.procurementNo === procurementId);
+                if (procurement) {
+                    selectedProcurements.push(procurement);
+                }
+            });
+            
+            if (selectedProcurements.length === 0) {
+                showNotification('找不到選擇的請購單資料', 'error');
+                return;
+            }
+            
+            // 切換到建立採購單頁面
+            showPage('createPurchase');
+            
+            // 等待頁面切換完成後再執行
+            setTimeout(() => {
+                // 找到對應的按鈕並設為 active
+                const buttons = document.querySelectorAll('.nav-btn');
+                buttons.forEach(btn => btn.classList.remove('active'));
+                
+                const createPurchaseBtn = Array.from(buttons).find(btn => 
+                    btn.onclick && btn.onclick.toString().includes('createPurchase')
+                );
+                if (createPurchaseBtn) {
+                    createPurchaseBtn.classList.add('active');
+                }
+                
+                // 清空現有的採購品項
+                const tableBody = document.getElementById('purchaseItemsTableBody');
+                if (tableBody) {
+                    tableBody.innerHTML = '';
+                }
+                purchaseItemCounter = 0;
+                
+                // 填入選擇的請購單品項
+                selectedProcurements.forEach(procurement => {
+                    procurement.items.forEach(item => {
+                        addPurchaseItemFromProcurement(item);
+                    });
+                });
+                
+                // 更新總金額
+                updatePurchaseTotal();
+                
+                // 設置備註
+                const noteField = document.getElementById('purchaseNote');
+                if (noteField) {
+                    noteField.value = `根據以下請購單建立：${selectedProcurements.map(p => p.procurementNo).join(', ')}`;
+                }
+                
+                // 顯示提示訊息
+                showNotification(`已從 ${selectedProcurements.length} 個請購單匯入 ${selectedProcurements.reduce((sum, p) => sum + p.items.length, 0)} 個品項`, 'success');
+                
+                console.log('採購單品項已匯入:', selectedProcurements);
+            }, 100);
+        }
+
+        // 查看採購文件
+        function viewPurchaseDocument(docId) {
+            let documentData = null;
+            
+            // 從待審核採購單中尋找
+            documentData = pendingPurchases.find(purch => purch.purchaseNo === docId);
+            
+            // 如果在待審核中沒找到，再從已核准中尋找
+            if (!documentData && window.approvedPurchases) {
+                documentData = window.approvedPurchases.find(purch => purch.purchaseNo === docId);
+            }
+            
+            // 如果還是沒找到，從已駁回中尋找
+            if (!documentData && window.rejectedPurchases) {
+                documentData = window.rejectedPurchases.find(purch => purch.purchaseNo === docId);
+            }
+            
+            if (documentData) {
+                // 顯示真實的採購單資料
+                document.getElementById('modalTitle').textContent = `查看採購單 ${docId}`;
+                
+                let itemsTableHTML = '';
+                documentData.items.forEach((item, index) => {
+                    itemsTableHTML += `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td>${item.itemCode}</td>
+                            <td>${item.itemName}</td>
+                            <td>${item.specification || '-'}</td>
+                            <td>${item.quantity}</td>
+                            <td>${item.unit}</td>
+                            <td style="text-align: right;">NT$ ${item.unitPrice.toLocaleString()}</td>
+                            <td style="text-align: right; font-weight: bold;">NT$ ${item.subtotal.toLocaleString()}</td>
+                        </tr>
+                    `;
+                });
+                
+                document.getElementById('modalContent').innerHTML = `
+                    <div class="form-row">
+                        <div class="form-col">
+                            <strong>採購單號：</strong>${documentData.purchaseNo}
+                        </div>
+                        <div class="form-col">
+                            <strong>採購日期：</strong>${documentData.purchaseDate}
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-col">
+                            <strong>供應商：</strong>${documentData.supplier}
+                        </div>
+                        <div class="form-col">
+                            <strong>聯絡人：</strong>${documentData.contactPerson}
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-col">
+                            <strong>備註：</strong>${documentData.purchaseNote || '無'}
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-col">
+                            <strong>提交時間：</strong>${documentData.submitTime}
+                        </div>
+                        <div class="form-col">
+                            <strong>狀態：</strong><span class="status-badge ${documentData.status === '已核准' ? 'status-approved' : documentData.status === '已駁回' ? 'status-rejected' : 'status-pending'}">${documentData.status}</span>
+                        </div>
+                    </div>
+                    ${documentData.approver ? `
+                    <div class="form-row">
+                        <div class="form-col">
+                            <strong>核准人：</strong>${documentData.approver}
+                        </div>
+                        <div class="form-col">
+                            <strong>核准時間：</strong>${documentData.approveTime}
+                        </div>
+                    </div>` : ''}
+                    ${documentData.rejecter ? `
+                    <div class="form-row">
+                        <div class="form-col">
+                            <strong>駁回人：</strong>${documentData.rejecter}
+                        </div>
+                        <div class="form-col">
+                            <strong>駁回時間：</strong>${documentData.rejectTime}
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-col">
+                            <strong>駁回原因：</strong>${documentData.rejectReason}
+                        </div>
+                    </div>` : ''}
+                    <h4 style="margin-top: 25px; color: #333;">採購品項明細</h4>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>項次</th>
+                                <th>品項編號</th>
+                                <th>品項名稱</th>
+                                <th>規格</th>
+                                <th>數量</th>
+                                <th>單位</th>
+                                <th>單價</th>
+                                <th>小計</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${itemsTableHTML}
+                        </tbody>
+                    </table>
+                    <div style="text-align: right; margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 8px;">
+                        <strong style="font-size: 18px; color: #667eea;">總金額：NT$ ${documentData.totalAmount.toLocaleString()}</strong>
+                    </div>
+                `;
+            } else {
+                // 如果找不到資料，顯示錯誤訊息
+                document.getElementById('modalTitle').textContent = `查看採購單 ${docId}`;
+                document.getElementById('modalContent').innerHTML = `
+                    <div class="alert alert-danger">
+                        <strong>❌</strong> 找不到此採購單的詳細資料
+                    </div>
+                `;
+            }
+            
+            document.getElementById('viewModal').style.display = 'block';
         }
 
         function addInventoryItem() {
